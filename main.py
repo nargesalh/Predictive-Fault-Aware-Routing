@@ -1,5 +1,6 @@
 
 from pathlib import Path
+import random
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -48,7 +49,64 @@ def get_operational_graph(graph):
     ]
 
     operational.remove_edges_from(failed_edges)
+
     return operational
+
+
+def sample_network_state(graph, rng):
+    """Sample one network state using link reliability probabilities."""
+    sampled = graph.copy()
+
+    for u, v, data in sampled.edges(data=True):
+        probability_up = data["probability_up"]
+
+        if not 0.0 <= probability_up <= 1.0:
+            raise ValueError(
+                f"Invalid reliability for link {u}-{v}: "
+                f"{probability_up}"
+            )
+
+        data["is_up"] = rng.random() < probability_up
+
+    return sampled
+
+
+def estimate_two_terminal_reliability(
+    graph,
+    source,
+    target,
+    trials=10_000,
+    seed=42,
+):
+    """Estimate source-target reliability using Monte Carlo simulation."""
+    if (
+        not isinstance(trials, int)
+        or isinstance(trials, bool)
+        or trials <= 0
+    ):
+        raise ValueError("trials must be a positive integer.")
+
+    if source not in graph:
+        raise nx.NodeNotFound(
+            f"Source node {source} is not in the graph."
+        )
+
+    if target not in graph:
+        raise nx.NodeNotFound(
+            f"Target node {target} is not in the graph."
+        )
+
+    rng = random.Random(seed)
+    successful_trials = 0
+
+    for _ in range(trials):
+        sampled = sample_network_state(graph, rng)
+        operational = get_operational_graph(sampled)
+
+        if nx.has_path(operational, source, target):
+            successful_trials += 1
+
+    return successful_trials / trials
 
 
 def find_shortest_route(graph, source, target):
@@ -83,7 +141,6 @@ def draw_network_panel(
     failed_edge=None,
 ):
     """Draw one network state and highlight its selected route."""
-    # Draw all physical links in gray.
     nx.draw_networkx_edges(
         graph,
         positions,
@@ -92,7 +149,6 @@ def draw_network_panel(
         width=2,
     )
 
-    # Highlight the selected route in green.
     if route is not None:
         route_edges = list(zip(route, route[1:]))
 
@@ -105,7 +161,6 @@ def draw_network_panel(
             width=4,
         )
 
-    # Show a failed link in red with a dashed line.
     if failed_edge is not None:
         nx.draw_networkx_edges(
             graph,
@@ -117,7 +172,6 @@ def draw_network_panel(
             width=3,
         )
 
-    # Display each link's latency.
     edge_labels = {
         (u, v): f"{data['latency_ms']:.1f} ms"
         for u, v, data in graph.edges(data=True)
@@ -132,7 +186,6 @@ def draw_network_panel(
         rotate=False,
     )
 
-    # Draw routers and their labels.
     nx.draw_networkx_nodes(
         graph,
         positions,
@@ -151,12 +204,12 @@ def draw_network_panel(
         font_weight="bold",
     )
 
-    # Prepare the title.
     route_text = (
         " -> ".join(route)
         if route is not None
         else "No available route"
     )
+
     latency_text = (
         f"{latency:.1f} ms"
         if latency is not None
@@ -168,10 +221,10 @@ def draw_network_panel(
         fontsize=11,
     )
 
-    # Explain the colors.
     legend_items = [
         Line2D(
-            [0], [0],
+            [0],
+            [0],
             color="#16a34a",
             linewidth=4,
             label="Selected route",
@@ -181,7 +234,8 @@ def draw_network_panel(
     if failed_edge is not None:
         legend_items.append(
             Line2D(
-                [0], [0],
+                [0],
+                [0],
                 color="#dc2626",
                 linestyle="dashed",
                 linewidth=3,
@@ -208,7 +262,6 @@ def draw_comparison(
     failed_edge,
 ):
     """Visualize the network before and after a link failure."""
-    # Keep the same layout in both panels for a fair visual comparison.
     positions = {
         "A": (0, 1),
         "B": (1, 2),
@@ -246,7 +299,6 @@ def draw_comparison(
 
     fig.tight_layout(rect=[0, 0, 1, 0.90])
 
-    # Save the figure so it can be inspected or used in documentation.
     output_path = Path("outputs") / "routing_comparison.png"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -260,7 +312,6 @@ def main():
     source, target = "A", "F"
     failed_edge = ("C", "D")
 
-    # Save the original state before simulating a failure.
     graph_before = build_network()
     graph_after = graph_before.copy()
 
@@ -268,7 +319,6 @@ def main():
         graph_before, source, target
     )
 
-    # Simulate a failure on link C-D.
     graph_after.edges[failed_edge]["is_up"] = False
 
     route_after, latency_after = find_shortest_route(
@@ -276,6 +326,7 @@ def main():
     )
 
     print("=== Before failure ===")
+
     if route_before is not None:
         print(
             f"Route: {' -> '.join(route_before)} "
@@ -284,7 +335,11 @@ def main():
     else:
         print("No available route.")
 
-    print(f"\nSimulated link failure: {failed_edge[0]}-{failed_edge[1]}")
+    print(
+        f"\nSimulated link failure: "
+        f"{failed_edge[0]}-{failed_edge[1]}"
+    )
+
     print("=== After failure ===")
 
     if route_after is not None:
@@ -294,6 +349,20 @@ def main():
         )
     else:
         print("No available route.")
+
+    reliability = estimate_two_terminal_reliability(
+        graph_before,
+        source,
+        target,
+        trials=10_000,
+        seed=42,
+    )
+
+    print("\n=== Monte Carlo reliability ===")
+    print(
+        f"Estimated {source}-{target} reliability: "
+        f"{reliability:.4f}"
+    )
 
     draw_comparison(
         graph_before,
