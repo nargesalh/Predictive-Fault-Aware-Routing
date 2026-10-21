@@ -1,7 +1,6 @@
 
 import csv
 import math
-from numbers import Real
 from pathlib import Path
 from statistics import mean, median
 from time import perf_counter
@@ -10,9 +9,11 @@ import matplotlib.pyplot as plt
 import networkx as nx
 
 from reliability import (
+    SubwayApproximationNotApplicable,
     all_terminal_reliability_exact,
     first_order_approximation,
     second_order_approximation,
+    subway_type_approximation,
 )
 
 
@@ -31,15 +32,18 @@ DEFAULT_Q_VALUES = (
 
 def build_subway_like_graph():
     """
-    Build a small subway-like graph.
+    Build a small sparse subway-like graph.
 
-    A complete graph with four junctions is transformed so that
-    every original edge becomes a path with two edges.
-    Intermediate vertices have degree two.
+    A K4 graph with one edge removed is used as the junction skeleton.
+    Every skeleton edge is replaced by a path of length two.
+
+    The resulting graph has two degree-three junctions and
+    three paths between them, of lengths 2, 4, and 4.
     """
     core = nx.complete_graph(4)
-    graph = nx.Graph()
+    core.remove_edge(0, 1)
 
+    graph = nx.Graph()
     graph.add_nodes_from(core.nodes())
 
     for u, v in core.edges():
@@ -51,7 +55,7 @@ def build_subway_like_graph():
 
 
 def build_benchmark_graphs():
-    """Create connected graph families for approximation benchmarking."""
+    """Create connected graph families for reliability benchmarking."""
     graphs = {
         "path_5": nx.path_graph(5),
         "cycle_5": nx.cycle_graph(5),
@@ -95,10 +99,9 @@ def _relative_error(estimate, exact):
 
 def run_benchmark(q_values=DEFAULT_Q_VALUES, repeats=3):
     """
-    Compare exact, first-order, and second-order reliability methods.
+    Compare exact, R1, R2, and Rs where each method is applicable.
 
-    Each row represents one graph and one edge-failure probability.
-    Runtime is the median over repeated executions.
+    Rs is left empty for graph structures outside its supported class.
     """
     if (
         not isinstance(repeats, int)
@@ -116,7 +119,7 @@ def run_benchmark(q_values=DEFAULT_Q_VALUES, repeats=3):
 
     for q in q_values:
         if (
-            not isinstance(q, Real)
+            not isinstance(q, (int, float))
             or isinstance(q, bool)
             or not math.isfinite(q)
             or not 0.0 <= q <= 1.0
@@ -145,8 +148,20 @@ def run_benchmark(q_values=DEFAULT_Q_VALUES, repeats=3):
                 repeats,
             )
 
-            r1_abs_error = abs(r1 - exact)
-            r2_abs_error = abs(r2 - exact)
+            try:
+                rs, rs_ms = _measure_runtime_ms(
+                    lambda: subway_type_approximation(graph, q),
+                    repeats,
+                )
+
+                rs_abs_error = abs(rs - exact)
+                rs_rel_error = _relative_error(rs, exact)
+
+            except SubwayApproximationNotApplicable:
+                rs = None
+                rs_ms = None
+                rs_abs_error = None
+                rs_rel_error = None
 
             rows.append(
                 {
@@ -157,13 +172,17 @@ def run_benchmark(q_values=DEFAULT_Q_VALUES, repeats=3):
                     "exact_reliability": exact,
                     "r1_estimate": r1,
                     "r2_estimate": r2,
-                    "r1_absolute_error": r1_abs_error,
-                    "r2_absolute_error": r2_abs_error,
+                    "rs_estimate": rs,
+                    "r1_absolute_error": abs(r1 - exact),
+                    "r2_absolute_error": abs(r2 - exact),
+                    "rs_absolute_error": rs_abs_error,
                     "r1_relative_error": _relative_error(r1, exact),
                     "r2_relative_error": _relative_error(r2, exact),
+                    "rs_relative_error": rs_rel_error,
                     "exact_runtime_ms": exact_ms,
                     "r1_runtime_ms": r1_ms,
                     "r2_runtime_ms": r2_ms,
+                    "rs_runtime_ms": rs_ms,
                 }
             )
 
@@ -192,7 +211,7 @@ def save_results_csv(rows, output_path):
 
 
 def plot_reliability_curves(rows, output_path):
-    """Plot exact, first-order, and second-order reliability curves."""
+    """Plot exact reliability and applicable approximation curves."""
     graph_names = list(
         dict.fromkeys(row["graph_name"] for row in rows)
     )
@@ -237,6 +256,21 @@ def plot_reliability_curves(rows, output_path):
             label="R2",
         )
 
+        rs_rows = [
+            row
+            for row in graph_rows
+            if row["rs_estimate"] is not None
+        ]
+
+        if rs_rows:
+            ax.plot(
+                [row["failure_probability"] for row in rs_rows],
+                [row["rs_estimate"] for row in rs_rows],
+                marker="D",
+                linestyle="-.",
+                label="Rs",
+            )
+
         ax.set_title(graph_name)
         ax.set_xlabel("Edge failure probability q")
         ax.set_ylabel("All-terminal reliability")
@@ -260,7 +294,7 @@ def plot_reliability_curves(rows, output_path):
 
 
 def plot_average_absolute_error(rows, output_path):
-    """Plot average absolute approximation error across graph families."""
+    """Plot R1 and R2 mean absolute errors across all graph families."""
     q_values = sorted(
         {row["failure_probability"] for row in rows}
     )
@@ -278,6 +312,7 @@ def plot_average_absolute_error(rows, output_path):
         r1_errors.append(
             mean(row["r1_absolute_error"] for row in selected_rows)
         )
+
         r2_errors.append(
             mean(row["r2_absolute_error"] for row in selected_rows)
         )
@@ -298,7 +333,7 @@ def plot_average_absolute_error(rows, output_path):
         label="R2 mean absolute error",
     )
 
-    ax.set_title("Approximation Error Across Graph Families")
+    ax.set_title("R1 and R2 Error Across All Graph Families")
     ax.set_xlabel("Edge failure probability q")
     ax.set_ylabel("Mean absolute error")
     ax.grid(True, alpha=0.3)
@@ -312,8 +347,55 @@ def plot_average_absolute_error(rows, output_path):
     plt.close(fig)
 
 
+def plot_subway_error(rows, output_path):
+    """Compare R1, R2, and Rs on the subway-like graph only."""
+    selected_rows = sorted(
+        (
+            row
+            for row in rows
+            if row["graph_name"] == "subway_like_small"
+        ),
+        key=lambda row: row["failure_probability"],
+    )
+
+    if not selected_rows:
+        raise ValueError("No subway-like benchmark results were found.")
+
+    if any(row["rs_estimate"] is None for row in selected_rows):
+        raise ValueError(
+            "Rs must be applicable to every subway-like test case."
+        )
+
+    q_values = [
+        row["failure_probability"] for row in selected_rows
+    ]
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+
+    for method in ("r1", "r2", "rs"):
+        ax.plot(
+            q_values,
+            [row[f"{method}_absolute_error"] for row in selected_rows],
+            marker="o",
+            label=f"{method.upper()} absolute error",
+        )
+
+    ax.set_title("Approximation Error on Subway-like Topology")
+    ax.set_xlabel("Edge failure probability q")
+    ax.set_ylabel("Absolute error")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    fig.tight_layout()
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
 def print_summary(rows):
-    """Print exploratory error and runtime summaries."""
+    """Print runtime and error summaries."""
     print("\n=== Benchmark summary ===")
     print(f"Number of benchmark cases: {len(rows)}")
 
@@ -339,6 +421,28 @@ def print_summary(rows):
             f"{average_error:.6f}"
         )
 
+    rs_rows = [
+        row
+        for row in rows
+        if row["rs_estimate"] is not None
+    ]
+
+    print(
+        f"Rs: applicable cases = {len(rs_rows)} "
+        f"out of {len(rows)}"
+    )
+
+    if rs_rows:
+        print(
+            "Rs: median runtime = "
+            f"{median(row['rs_runtime_ms'] for row in rs_rows):.4f} ms"
+        )
+
+        print(
+            "Rs: mean absolute error on applicable cases = "
+            f"{mean(row['rs_absolute_error'] for row in rs_rows):.6f}"
+        )
+
 
 def main():
     output_dir = Path("outputs")
@@ -346,19 +450,29 @@ def main():
 
     rows = run_benchmark(repeats=3)
 
-    csv_path = output_dir / "reliability_benchmark.csv"
-    curves_path = output_dir / "reliability_curves.png"
-    errors_path = output_dir / "approximation_error_summary.png"
+    save_results_csv(
+        rows,
+        output_dir / "reliability_benchmark.csv",
+    )
 
-    save_results_csv(rows, csv_path)
-    plot_reliability_curves(rows, curves_path)
-    plot_average_absolute_error(rows, errors_path)
+    plot_reliability_curves(
+        rows,
+        output_dir / "reliability_curves.png",
+    )
+
+    plot_average_absolute_error(
+        rows,
+        output_dir / "approximation_error_summary.png",
+    )
+
+    plot_subway_error(
+        rows,
+        output_dir / "subway_approximation_error.png",
+    )
 
     print_summary(rows)
 
-    print(f"\nCSV results: {csv_path.resolve()}")
-    print(f"Reliability curves: {curves_path.resolve()}")
-    print(f"Error summary: {errors_path.resolve()}")
+    print("\nResults saved to:", output_dir.resolve())
 
 
 if __name__ == "__main__":

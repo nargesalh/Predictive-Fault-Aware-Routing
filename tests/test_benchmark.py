@@ -19,7 +19,7 @@ def test_benchmark_graphs_are_connected():
 
 
 def test_subway_like_graph_has_degree_two_vertices():
-    """The subway-like graph should contain intermediate degree-two nodes."""
+    """The subway-like graph should contain intermediate vertices."""
     graphs = build_benchmark_graphs()
     graph = graphs["subway_like_small"]
 
@@ -33,7 +33,7 @@ def test_subway_like_graph_has_degree_two_vertices():
 
 
 def test_benchmark_returns_one_row_per_graph_and_q():
-    """Each graph and failure-probability pair should yield one result."""
+    """Each graph and failure-probability pair yields one result."""
     graphs = build_benchmark_graphs()
     rows = run_benchmark(q_values=[0.1], repeats=1)
 
@@ -44,29 +44,40 @@ def test_benchmark_returns_one_row_per_graph_and_q():
         assert 0.0 <= row["r1_estimate"] <= 1.0
         assert 0.0 <= row["r2_estimate"] <= 1.0
 
+    rs_supported = {
+        "path_5",
+        "cycle_5",
+        "subway_like_small",
+    }
+
+    for row in rows:
+        if row["graph_name"] in rs_supported:
+            assert row["rs_estimate"] is not None
+        else:
+            assert row["rs_estimate"] is None
+
 
 def test_benchmark_errors_match_estimates():
-    """Absolute errors must match the stored estimates and exact results."""
+    """Stored absolute errors must match the calculated values."""
     rows = run_benchmark(q_values=[0.1], repeats=1)
 
     for row in rows:
         assert row["r1_absolute_error"] == pytest.approx(
-            abs(
-                row["r1_estimate"]
-                - row["exact_reliability"]
-            )
+            abs(row["r1_estimate"] - row["exact_reliability"])
         )
 
         assert row["r2_absolute_error"] == pytest.approx(
-            abs(
-                row["r2_estimate"]
-                - row["exact_reliability"]
-            )
+            abs(row["r2_estimate"] - row["exact_reliability"])
         )
+
+        if row["rs_estimate"] is not None:
+            assert row["rs_absolute_error"] == pytest.approx(
+                abs(row["rs_estimate"] - row["exact_reliability"])
+            )
 
 
 def test_benchmark_rejects_invalid_repeats():
-    """Runtime measurements require a positive number of repetitions."""
+    """Runtime measurements require a positive repetition count."""
     with pytest.raises(ValueError, match="repeats"):
         run_benchmark(q_values=[0.1], repeats=0)
 

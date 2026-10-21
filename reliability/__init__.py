@@ -14,6 +14,11 @@ from .approximations import (
     second_order_approximation,
 )
 
+from .subway import (
+    SubwayApproximationNotApplicable,
+    subway_type_approximation,
+)
+
 __all__ = [
     "all_terminal_average_reliability_exact",
     "all_terminal_reliability_exact",
@@ -21,4 +26,6 @@ __all__ = [
     "sample_edge_deletion_counts",
     "first_order_approximation",
     "second_order_approximation",
+    "SubwayApproximationNotApplicable",
+    "subway_type_approximation",
 ]
