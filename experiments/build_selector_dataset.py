@@ -11,6 +11,7 @@ ALGORITHMS = (
     ("r1", "r1_estimate", "r1_absolute_error", "r1_relative_error"),
     ("r2", "r2_estimate", "r2_absolute_error", "r2_relative_error"),
     ("rs", "rs_estimate", "rs_absolute_error", "rs_relative_error"),
+    ("mc", "mc_estimate", "mc_absolute_error", "mc_relative_error"),
 )
 
 

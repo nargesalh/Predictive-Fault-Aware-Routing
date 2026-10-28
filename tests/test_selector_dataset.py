@@ -19,6 +19,11 @@ def make_benchmark_row():
         "r1_relative_error": "0.012345679",
         "r2_relative_error": "0.006172840",
         "rs_relative_error": "",
+        "mc_estimate": "0.805",
+        "mc_absolute_error": "0.005",
+        "mc_relative_error": "0.006172840",
+        "mc_trials": "1000",
+        "mc_seed": "42",
     }
 
 
@@ -28,9 +33,9 @@ def test_build_selector_rows_creates_four_candidates():
         {"path_3": nx.path_graph(3)},
     )
 
-    assert len(rows) == 4
+    assert len(rows) == 5
     assert {row["algorithm"] for row in rows} == {
-        "exact", "r1", "r2", "rs"
+        "exact", "r1", "r2", "rs", "mc"
     }
 
 
@@ -75,3 +80,17 @@ def test_unknown_graph_is_rejected():
 def test_empty_benchmark_is_rejected():
     with pytest.raises(ValueError, match="must not be empty"):
         build_selector_rows([], {})
+
+def test_monte_carlo_candidate_is_preserved():
+    rows = build_selector_rows(
+        [make_benchmark_row()],
+        {"path_3": nx.path_graph(3)},
+    )
+
+    mc_row = next(
+        row for row in rows if row["algorithm"] == "mc"
+    )
+
+    assert mc_row["is_applicable"] is True
+    assert mc_row["estimate"] == pytest.approx(0.805)
+    assert mc_row["absolute_error"] == pytest.approx(0.005)
