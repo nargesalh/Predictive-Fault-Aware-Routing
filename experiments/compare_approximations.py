@@ -394,6 +394,53 @@ def plot_subway_error(rows, output_path):
     plt.close(fig)
 
 
+def print_error_by_graph(rows):
+    """Print mean absolute error for each graph and applicable method."""
+    print("\n=== Mean absolute error by graph ===")
+
+    graph_names = dict.fromkeys(
+        row["graph_name"] for row in rows
+    )
+
+    for graph_name in graph_names:
+        graph_rows = [
+            row
+            for row in rows
+            if row["graph_name"] == graph_name
+        ]
+
+        error_summary = []
+
+        for method in ("r1", "r2", "rs"):
+            error_key = f"{method}_absolute_error"
+
+            errors = [
+                row[error_key]
+                for row in graph_rows
+                if row[error_key] is not None
+            ]
+
+            if errors:
+                error_summary.append(
+                    f"{method.upper()} MAE={mean(errors):.6f}"
+                )
+            else:
+                error_summary.append(
+                    f"{method.upper()} MAE=N/A"
+                )
+
+        rs_cases = sum(
+            row["rs_estimate"] is not None
+            for row in graph_rows
+        )
+
+        print(
+            f"{graph_name} "
+            f"(Rs applicable: {rs_cases}/{len(graph_rows)}): "
+            + " | ".join(error_summary)
+        )
+
+
 def print_summary(rows):
     """Print runtime and error summaries."""
     print("\n=== Benchmark summary ===")
@@ -443,6 +490,51 @@ def print_summary(rows):
             f"{mean(row['rs_absolute_error'] for row in rs_rows):.6f}"
         )
 
+def print_error_by_graph(rows):
+    """Print mean absolute errors for each graph."""
+    print("\n=== Mean absolute error by graph ===")
+
+    graph_names = dict.fromkeys(
+        row["graph_name"] for row in rows
+    )
+
+    for graph_name in graph_names:
+        graph_rows = [
+            row
+            for row in rows
+            if row["graph_name"] == graph_name
+        ]
+
+        error_summary = []
+
+        for method in ("r1", "r2", "rs"):
+            error_key = f"{method}_absolute_error"
+
+            errors = [
+                row[error_key]
+                for row in graph_rows
+                if row[error_key] is not None
+            ]
+
+            if errors:
+                error_summary.append(
+                    f"{method.upper()} MAE={mean(errors):.6f}"
+                )
+            else:
+                error_summary.append(
+                    f"{method.upper()} MAE=N/A"
+                )
+
+        rs_cases = sum(
+            row["rs_estimate"] is not None
+            for row in graph_rows
+        )
+
+        print(
+            f"{graph_name} "
+            f"(Rs applicable: {rs_cases}/{len(graph_rows)}): "
+            + " | ".join(error_summary)
+        )
 
 def main():
     output_dir = Path("outputs")
@@ -471,9 +563,8 @@ def main():
     )
 
     print_summary(rows)
-
     print("\nResults saved to:", output_dir.resolve())
-
+    print_error_by_graph(rows)
 
 if __name__ == "__main__":
     main()
