@@ -1,6 +1,9 @@
 import pytest
 
-from experiments.compare_approximations import run_benchmark
+from experiments.compare_approximations import (
+    build_benchmark_graphs,
+    run_benchmark,
+)
 
 
 def test_benchmark_includes_monte_carlo_results():
@@ -11,7 +14,7 @@ def test_benchmark_includes_monte_carlo_results():
         mc_seed=7,
     )
 
-    assert len(rows) == 5
+    assert len(rows) == len(build_benchmark_graphs())
 
     for row in rows:
         assert 0.0 <= row["mc_estimate"] <= 1.0

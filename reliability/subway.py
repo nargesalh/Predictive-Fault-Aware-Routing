@@ -178,7 +178,10 @@ def subway_type_approximation(graph, failure_probability):
     p = 1.0 - q
 
     core, removed_edges = _remove_one_shell(graph)
-
+    if core.number_of_edges() > 0 and any(nx.bridges(core)):
+        raise SubwayApproximationNotApplicable(
+            "Rs requires a bridge-free core after one-shell reduction."
+    )
     path_lengths, core_type = _extract_degree_two_path_lengths(core)
 
     # All edges were removed by one-shell reduction.

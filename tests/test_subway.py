@@ -138,3 +138,13 @@ def test_original_graph_is_not_modified():
     subway_type_approximation(graph, 0.1)
 
     assert set(graph.edges()) == original_edges
+
+def test_subway_approximation_rejects_bridge_in_core():
+    """Rs must reject a core containing a bridge."""
+    graph = nx.barbell_graph(3, 1)
+
+    with pytest.raises(
+        SubwayApproximationNotApplicable,
+        match="bridge-free core",
+    ):
+        subway_type_approximation(graph, 0.1)

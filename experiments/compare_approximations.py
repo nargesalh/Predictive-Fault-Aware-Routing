@@ -66,6 +66,13 @@ def build_benchmark_graphs():
             3, 6, seed=42
         ),
         "subway_like_small": build_subway_like_graph(),
+        "path_7": nx.path_graph(7),
+        "cycle_7": nx.cycle_graph(7),
+        "complete_5": nx.complete_graph(5),
+        "ladder_4": nx.ladder_graph(4),
+        "wheel_6": nx.wheel_graph(6),
+        "barbell_3_1": nx.barbell_graph(3, 1),
+        "grid_3x3": nx.grid_2d_graph(3, 3),
     }
 
     for name, graph in graphs.items():

@@ -12,7 +12,7 @@ def test_benchmark_graphs_are_connected():
     """Every graph in the benchmark must be connected."""
     graphs = build_benchmark_graphs()
 
-    assert len(graphs) == 5
+    assert len(graphs) == 12
 
     for graph in graphs.values():
         assert nx.is_connected(graph)
@@ -47,6 +47,8 @@ def test_benchmark_returns_one_row_per_graph_and_q():
     rs_supported = {
         "path_5",
         "cycle_5",
+        "path_7",
+        "cycle_7",
         "subway_like_small",
     }
 
