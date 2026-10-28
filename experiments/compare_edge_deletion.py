@@ -2,6 +2,7 @@ import csv
 from pathlib import Path
 from statistics import mean, median, stdev
 from time import perf_counter
+import networkx as nx
 
 from experiments.compare_approximations import build_benchmark_graphs
 from reliability import (
@@ -13,6 +14,29 @@ from reliability import (
 TRIAL_COUNTS = (100, 500, 1000, 2500)
 SEEDS = (42, 43, 44, 45, 46)
 
+def build_edge_deletion_graphs():
+    """Build a diverse set of graphs for edge-deletion benchmarking."""
+    graphs = build_benchmark_graphs()
+
+    graphs.update(
+        {
+            "path_7": nx.path_graph(7),
+            "cycle_7": nx.cycle_graph(7),
+            "complete_5": nx.complete_graph(5),
+            "ladder_4": nx.ladder_graph(4),
+            "wheel_6": nx.wheel_graph(6),
+            "barbell_3_1": nx.barbell_graph(3, 1),
+            "grid_3x3": nx.grid_2d_graph(3, 3),
+        }
+    )
+
+    for name, graph in graphs.items():
+        if not nx.is_connected(graph):
+            raise ValueError(
+                f"Benchmark graph '{name}' must be connected."
+            )
+
+    return graphs
 
 def run_benchmark(trial_counts=TRIAL_COUNTS, seeds=SEEDS):
     """Compare edge-deletion estimates with exact average reliability."""
@@ -35,7 +59,7 @@ def run_benchmark(trial_counts=TRIAL_COUNTS, seeds=SEEDS):
 
     rows = []
 
-    for graph_name, graph in build_benchmark_graphs().items():
+    for graph_name, graph in build_edge_deletion_graphs().items():
         start = perf_counter()
         exact = all_terminal_average_reliability_exact(graph)
         exact_runtime_ms = (perf_counter() - start) * 1000
