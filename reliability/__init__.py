@@ -19,6 +19,10 @@ from .subway import (
     subway_type_approximation,
 )
 
+from .monte_carlo import (
+    estimate_all_terminal_reliability_monte_carlo,
+)
+
 __all__ = [
     "all_terminal_average_reliability_exact",
     "all_terminal_reliability_exact",
@@ -28,4 +32,5 @@ __all__ = [
     "second_order_approximation",
     "SubwayApproximationNotApplicable",
     "subway_type_approximation",
+    "estimate_all_terminal_reliability_monte_carlo",
 ]
