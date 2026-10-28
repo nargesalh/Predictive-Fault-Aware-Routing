@@ -14,6 +14,7 @@ from reliability import (
     first_order_approximation,
     second_order_approximation,
     subway_type_approximation,
+    estimate_all_terminal_reliability_monte_carlo,
 )
 
 
@@ -28,6 +29,7 @@ DEFAULT_Q_VALUES = (
     0.90,
     0.99,
 )
+DEFAULT_MC_SEED = 42
 
 
 def build_subway_like_graph():
@@ -97,7 +99,12 @@ def _relative_error(estimate, exact):
     return abs(estimate - exact) / abs(exact)
 
 
-def run_benchmark(q_values=DEFAULT_Q_VALUES, repeats=3):
+def run_benchmark(
+    q_values=DEFAULT_Q_VALUES,
+    repeats=3,
+    mc_trials=1000,
+    mc_seed=DEFAULT_MC_SEED,
+):
     """
     Compare exact, R1, R2, and Rs where each method is applicable.
 
@@ -109,6 +116,15 @@ def run_benchmark(q_values=DEFAULT_Q_VALUES, repeats=3):
         or repeats <= 0
     ):
         raise ValueError("repeats must be a positive integer.")
+    if (
+        not isinstance(mc_trials, int)
+        or isinstance(mc_trials, bool)
+        or mc_trials <= 0
+    ):
+        raise ValueError("mc_trials must be a positive integer.")
+
+    if not isinstance(mc_seed, int) or isinstance(mc_seed, bool):
+        raise ValueError("mc_seed must be an integer.")
 
     q_values = tuple(q_values)
 
@@ -148,6 +164,16 @@ def run_benchmark(q_values=DEFAULT_Q_VALUES, repeats=3):
                 repeats,
             )
 
+            mc, mc_ms = _measure_runtime_ms(
+                lambda: estimate_all_terminal_reliability_monte_carlo(
+                    graph,
+                    failure_probability=q,
+                    trials=mc_trials,
+                    seed=mc_seed,
+                ),
+                repeats,
+            )
+
             try:
                 rs, rs_ms = _measure_runtime_ms(
                     lambda: subway_type_approximation(graph, q),
@@ -173,16 +199,22 @@ def run_benchmark(q_values=DEFAULT_Q_VALUES, repeats=3):
                     "r1_estimate": r1,
                     "r2_estimate": r2,
                     "rs_estimate": rs,
+                    "mc_estimate": mc,
+                    "mc_trials": mc_trials,
+                    "mc_seed": mc_seed,
                     "r1_absolute_error": abs(r1 - exact),
                     "r2_absolute_error": abs(r2 - exact),
                     "rs_absolute_error": rs_abs_error,
+                    "mc_absolute_error": abs(mc - exact),
                     "r1_relative_error": _relative_error(r1, exact),
                     "r2_relative_error": _relative_error(r2, exact),
                     "rs_relative_error": rs_rel_error,
+                    "mc_relative_error": _relative_error(mc, exact),
                     "exact_runtime_ms": exact_ms,
                     "r1_runtime_ms": r1_ms,
                     "r2_runtime_ms": r2_ms,
                     "rs_runtime_ms": rs_ms,
+                    "mc_runtime_ms": mc_ms,
                 }
             )
 
@@ -255,6 +287,13 @@ def plot_reliability_curves(rows, output_path):
             linestyle=":",
             label="R2",
         )
+        ax.plot(
+            q_values,
+            [row["mc_estimate"] for row in graph_rows],
+            marker="x",
+            linestyle="-.",
+            label=f"Monte Carlo (N={graph_rows[0]['mc_trials']})",
+        )
 
         rs_rows = [
             row
@@ -282,7 +321,7 @@ def plot_reliability_curves(rows, output_path):
         ax.set_visible(False)
 
     fig.suptitle(
-        "Exact vs Approximate Network Reliability",
+        "Exact, Approximate, and Monte Carlo Network Reliability",
         fontsize=15,
     )
     fig.tight_layout(rect=[0, 0, 1, 0.96])
@@ -301,6 +340,7 @@ def plot_average_absolute_error(rows, output_path):
 
     r1_errors = []
     r2_errors = []
+    mc_errors = []
 
     for q in q_values:
         selected_rows = [
@@ -315,6 +355,9 @@ def plot_average_absolute_error(rows, output_path):
 
         r2_errors.append(
             mean(row["r2_absolute_error"] for row in selected_rows)
+        )
+        mc_errors.append(
+            mean(row["mc_absolute_error"] for row in selected_rows)
         )
 
     fig, ax = plt.subplots(figsize=(9, 5))
@@ -332,8 +375,14 @@ def plot_average_absolute_error(rows, output_path):
         marker="^",
         label="R2 mean absolute error",
     )
+    ax.plot(
+        q_values,
+        mc_errors,
+        marker="x",
+        label="Monte Carlo mean absolute error",
+    )
 
-    ax.set_title("R1 and R2 Error Across All Graph Families")
+    ax.set_title("Approximation and Monte Carlo Error Across All Graph Families")
     ax.set_xlabel("Edge failure probability q")
     ax.set_ylabel("Mean absolute error")
     ax.grid(True, alpha=0.3)
@@ -372,7 +421,7 @@ def plot_subway_error(rows, output_path):
 
     fig, ax = plt.subplots(figsize=(9, 5))
 
-    for method in ("r1", "r2", "rs"):
+    for method in ("r1", "r2", "rs", "mc"):
         ax.plot(
             q_values,
             [row[f"{method}_absolute_error"] for row in selected_rows],
@@ -411,7 +460,7 @@ def print_error_by_graph(rows):
 
         error_summary = []
 
-        for method in ("r1", "r2", "rs"):
+        for method in ("r1", "r2", "rs", "mc"):
             error_key = f"{method}_absolute_error"
 
             errors = [
@@ -446,7 +495,7 @@ def print_summary(rows):
     print("\n=== Benchmark summary ===")
     print(f"Number of benchmark cases: {len(rows)}")
 
-    for method in ("exact", "r1", "r2"):
+    for method in ("exact", "r1", "r2", "mc"):
         runtime_key = f"{method}_runtime_ms"
         median_runtime = median(
             row[runtime_key] for row in rows
@@ -457,7 +506,7 @@ def print_summary(rows):
             f"{median_runtime:.4f} ms"
         )
 
-    for method in ("r1", "r2"):
+    for method in ("r1", "r2", "mc"):
         error_key = f"{method}_absolute_error"
         average_error = mean(
             row[error_key] for row in rows
@@ -467,6 +516,9 @@ def print_summary(rows):
             f"{method}: mean absolute error = "
             f"{average_error:.6f}"
         )
+
+    print(f"Monte Carlo trials per case: {rows[0]['mc_trials']}")
+    print(f"Monte Carlo seed: {rows[0]['mc_seed']}")
 
     rs_rows = [
         row
@@ -488,52 +540,6 @@ def print_summary(rows):
         print(
             "Rs: mean absolute error on applicable cases = "
             f"{mean(row['rs_absolute_error'] for row in rs_rows):.6f}"
-        )
-
-def print_error_by_graph(rows):
-    """Print mean absolute errors for each graph."""
-    print("\n=== Mean absolute error by graph ===")
-
-    graph_names = dict.fromkeys(
-        row["graph_name"] for row in rows
-    )
-
-    for graph_name in graph_names:
-        graph_rows = [
-            row
-            for row in rows
-            if row["graph_name"] == graph_name
-        ]
-
-        error_summary = []
-
-        for method in ("r1", "r2", "rs"):
-            error_key = f"{method}_absolute_error"
-
-            errors = [
-                row[error_key]
-                for row in graph_rows
-                if row[error_key] is not None
-            ]
-
-            if errors:
-                error_summary.append(
-                    f"{method.upper()} MAE={mean(errors):.6f}"
-                )
-            else:
-                error_summary.append(
-                    f"{method.upper()} MAE=N/A"
-                )
-
-        rs_cases = sum(
-            row["rs_estimate"] is not None
-            for row in graph_rows
-        )
-
-        print(
-            f"{graph_name} "
-            f"(Rs applicable: {rs_cases}/{len(graph_rows)}): "
-            + " | ".join(error_summary)
         )
 
 def main():
